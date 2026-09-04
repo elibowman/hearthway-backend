@@ -40,3 +40,6 @@ build/
 /ignored
 
 /build_history.sh
+
+# Local secrets (see .env.example)
+.env

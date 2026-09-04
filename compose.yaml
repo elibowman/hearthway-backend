@@ -1,3 +1,10 @@
+# Development: only `postgres` has no profile, so running the app from the IDE or
+# with ./mvnw spring-boot:run (spring-boot-docker-compose) starts just the database.
+#
+# Full stack in containers (see README):
+#   cp .env.example .env        # fill in the Auth0 credentials
+#   docker compose --profile full up --build
+#   open http://localhost:4200
 services:
   postgres:
     # Pinned to a major version: data directories are not compatible across
@@ -12,3 +19,36 @@ services:
       - POSTGRES_PASSWORD=root
     ports:
       - 127.0.0.1:5432:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    profiles: [full]
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DOCKER_COMPOSE_ENABLED: "false"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/root
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      # Behind the frontend's nginx: build redirect URLs (e.g. the OAuth2
+      # callback) from the forwarded host, http://localhost:4200.
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+    # Not published: reached through the frontend at http://localhost:4200.
+
+  frontend:
+    profiles: [full]
+    build: ${FRONTEND_DIR:-../hearthway-frontend}
+    depends_on:
+      - backend
+    ports:
+      # Same origin as `ng serve`, so the Auth0 callback and logout URLs that are
+      # already registered for development work unchanged.
+      - 127.0.0.1:4200:80

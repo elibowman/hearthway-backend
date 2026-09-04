@@ -25,27 +25,41 @@ Spring Boot backend of Hearthway
 ## Usage
 ### Prerequisites
 - [JDK 21](https://adoptium.net/temurin/releases/)
-- [PostgreSQL](https://www.postgresql.org/download/)
-- IDE ([VSCode](https://code.visualstudio.com/download), [IntelliJ](https://www.jetbrains.com/idea/download/))
+- [Docker](https://docs.docker.com/get-docker/) (PostgreSQL runs in a container; the tests use Testcontainers)
+- An Auth0 application's client ID and secret
 
 ### Clone the repository
 <!-- TODO: replace TODO-USERNAME and TODO-BACKEND-REPO with the real backend repo URL -->
 ``git clone https://github.com/TODO-USERNAME/TODO-BACKEND-REPO``
 
-### Launch
-The `dev` profile is used by default. In production, set `SPRING_PROFILES_ACTIVE=prod`
-along with the `POSTGRES_*` variables (and optionally `AUTH0_REDIRECT_URL`, default `/`).
+### Configure
+``cp .env.example .env`` and fill in `AUTH0_CLIENT_ID` and `AUTH0_CLIENT_SECRET`.
+`.env` is git-ignored; the `dev` profile reads it, and so does Docker Compose.
 
-#### Maven
-``./mvnw spring-boot:run  -Dspring-boot.run.arguments="--AUTH0_CLIENT_ID=<client-id> --AUTH0_CLIENT_SECRET=<client-secret>"``
+### Run
+The `dev` profile is used by default. Starting the app also starts PostgreSQL from
+`compose.yaml` (Spring Boot Docker Compose support).
+
+#### Maven or your IDE
+``./mvnw spring-boot:run``, or run `hearthway.HearthwayApplication` from your IDE with
+this folder as the working directory. Then start the frontend with `ng serve`.
+
+#### Everything in containers
+Clone the frontend next to this repository (or set `FRONTEND_DIR` in `.env`), then:
+
+``docker compose --profile full up --build``
+
+and open http://localhost:4200. nginx in the frontend container serves the app and
+proxies `/api`, `/oauth2` and `/login` to the backend, so everything is same-origin.
 
 #### Tests
 ``./mvnw verify`` runs the test suite against a real PostgreSQL started by
 [Testcontainers](https://testcontainers.com/), so Docker must be running. No Auth0
 credentials or network access to Auth0 are needed.
 
-#### IntelliJ
-Go in IntelliJ add the environment variables and then run it.
+### Production
+Set `SPRING_PROFILES_ACTIVE=prod` along with the `POSTGRES_*` variables, the Auth0
+credentials and optionally `AUTH0_REDIRECT_URL` (default `/`).
 
 ---
 

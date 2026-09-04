@@ -1,4 +1,7 @@
 spring:
+  config:
+    # Local secrets such as AUTH0_CLIENT_ID; see .env.example.
+    import: optional:file:.env[.properties]
   liquibase:
     contexts: dev
 
