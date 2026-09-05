@@ -9,11 +9,12 @@ services:
   postgres:
     # Pinned to a major version: data directories are not compatible across
     # major versions, and postgres:18+ images changed the default data path.
-    # Must match ./data/postgresql/PG_VERSION if a local volume already exists.
-    image: 'postgres:17'
+    image: 'postgres:17-trixie'
     volumes:
       - ./docker/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ./data/postgresql/:/var/lib/postgresql/data
+      # A Docker-managed volume rather than a host folder: on macOS, host folders
+      # can report ownership that PostgreSQL refuses to start with.
+      - postgres-data:/var/lib/postgresql/data
     environment:
       - POSTGRES_USER=root
       - POSTGRES_PASSWORD=root
@@ -52,3 +53,8 @@ services:
       # Same origin as `ng serve`, so the Auth0 callback and logout URLs that are
       # already registered for development work unchanged.
       - 127.0.0.1:4200:80
+
+volumes:
+  postgres-data:
+    # Fixed name, independent of the folder (Compose project) name.
+    name: hearthway-postgres-data
