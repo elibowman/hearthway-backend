@@ -1,32 +1,138 @@
-# Hearthway backend
+# Hearthway
 
 <!-- TODO: replace TODO-USERNAME and TODO-BACKEND-REPO so the badge points at this repo -->
 [![CI](https://github.com/TODO-USERNAME/TODO-BACKEND-REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/TODO-USERNAME/TODO-BACKEND-REPO/actions/workflows/ci.yml)
 
-Spring Boot backend of Hearthway
-
+A homestay booking platform: hosts list their homes, guests search for a place and book
+a stay. This repository is the **Spring Boot backend**; the
 <!-- TODO: replace TODO-USERNAME and TODO-FRONTEND-REPO with the real frontend repo URL -->
-[Angular Frontend](https://github.com/TODO-USERNAME/TODO-FRONTEND-REPO)
+[Angular frontend](https://github.com/TODO-USERNAME/TODO-FRONTEND-REPO) lives in its own
+repository.
 
-### Key Features
-- Booking management for travelers
-- Landlord reservation management
-- Search for houses by criteria (location, date, guests, beds, etc)
-- Authentication and Authorization (Role management) with Auth0 (OAuth2)
-- Domain-driven design
+<!-- TODO: add the demo video link and a screenshot (e.g. docs/home.png) -->
+**[Watch the 3-minute demo](TODO-VIDEO-LINK)**
 
-### Tech stack
-- Spring Boot 3
-- Angular 17
-- PrimeNG
-- PostgreSQL
-- Auth0 (2025)
+## What it does
 
-## Usage
+**Guests** browse homes by category, search by country, dates and number of guests,
+check a home's availability on a calendar, book a stay and cancel their bookings.
+
+**Hosts** list a home with a step-by-step wizard (category, location, rooms, photos,
+description, price), see their listings and the reservations made on them, and can
+cancel a reservation. Listing a first home makes a user a host.
+
+## Highlights
+
+**No double bookings, even under concurrent requests.** Booking a stay locks the
+listing's row (`SELECT ... FOR UPDATE`), so requests for the same listing are handled
+one at a time and the availability check sees the previous booking. A PostgreSQL
+exclusion constraint on the booked date ranges backs this up at the database level. A
+test fires 20 simultaneous bookings for the same nights and checks that exactly one
+succeeds and the rest get a clean `409 Conflict`. That test first exposed a deadlock
+when relying on the constraint alone, which is why the row lock was added.
+
+```mermaid
+sequenceDiagram
+    participant A as Guest A
+    participant B as Guest B
+    participant API as Backend
+    participant DB as PostgreSQL
+    A->>API: Book Oct 10-12
+    B->>API: Book Oct 10-12
+    API->>DB: Lock listing row (A gets it)
+    API->>DB: Lock listing row (B waits)
+    API->>DB: A: dates free, insert booking, commit
+    API-->>A: 200 OK
+    API->>DB: B: lock acquired, dates taken
+    API-->>B: 409 Conflict
+```
+
+**Stays are calendar days, not timestamps.** Check-in and check-out are stored as dates,
+and a stay covers the nights from check-in up to, but not including, check-out. So a new
+stay can start on the day the previous guest leaves, and a guest's time zone can't shift
+their dates.
+
+**Tokens never reach the browser.** The backend runs the OAuth2/OIDC login itself
+(Spring Security's `oauth2Login`, a backend-for-frontend setup). The browser only holds
+a session cookie, protected against CSRF with Angular's double-submit cookie support, so
+there is no access token in JavaScript for an XSS bug to steal.
+
+**Pictures are served by URL, not embedded in JSON.** List and detail responses carry
+picture IDs; images come from `/api/pictures/{id}`, cached for a year and scaled to
+the width a page needs. For a page of 10 listings:
+
+| Response | Before | After |
+|---|---|---|
+| Home page listings (`get-all-by-category`) | 4.95 MB | 2.26 KB |
+| One listing's details (`get-one`) | 12.15 MB | 3.69 KB |
+| Whole home page, development build | 14.6 MB | 6.5 MB |
+
+Response times stayed the same locally: the saving is in transfer, and the server still
+reads picture bytes from the database (see [Known limitations](#known-limitations)).
+Because uploaders choose the stored content type, only image types are served inline;
+anything else is sent as a download, so an uploaded HTML file can't run on the app's
+origin.
+
+**Internal IDs stay internal.** Rows use database sequence IDs, but the API only exposes
+UUIDs. Ownership is checked inside the queries (for example "delete this listing *if it
+belongs to the current host*"), so guessing another user's IDs gets nowhere.
+
+**Tested against a real database.** The integration tests start PostgreSQL with
+Testcontainers, so they exercise the real migrations, the exclusion constraint and the
+locking; that's how the deadlock described above was found before any real user could
+hit it. CI runs them on every push.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Browser["Browser<br/>Angular app"] -->|"pages, /api, /oauth2, /login"| Nginx["nginx<br/>(frontend container)"]
+    Nginx -->|"proxied requests"| Backend["Spring Boot<br/>REST API + OAuth2 login"]
+    Backend -->|"JPA, Liquibase"| DB[("PostgreSQL")]
+    Backend <-->|"OIDC login"| Auth0["Auth0"]
+```
+
+nginx serves the Angular app and proxies API and login requests to the backend, so the
+browser sees one origin and the session cookie just works.
+
+The code is organised by feature, with layers inside each:
+
+```
+src/main/java/hearthway/
+├── booking/          bookings: creation, availability, cancellation
+├── listing/          listings, search and pictures
+├── user/             users and the link to Auth0
+├── sharedkernel/     small shared types
+└── infrastructure/   security, database and clock configuration
+```
+
+Each feature has `presentation` (REST controllers), `application` (services and DTOs),
+`domain` (JPA entities), `repository` and `mapper` (MapStruct) packages. Database
+changes are versioned with Liquibase; applied changesets are never edited, so renames
+and type changes are new migrations.
+
+## Tech stack
+
+- **Backend:** Java 21, Spring Boot 3.2 (Web, Security with OAuth2 client, Data JPA,
+  Validation), Hibernate, Liquibase, MapStruct
+- **Database:** PostgreSQL 17 (with the `btree_gist` extension for the booking
+  constraint)
+- **Identity:** Auth0 (OpenID Connect)
+- **Frontend:** Angular 17, PrimeNG, Leaflet with OpenStreetMap
+- **Testing:** JUnit 5, Spring Boot Test, Testcontainers, Karma/Jasmine
+- **Delivery:** Docker, Docker Compose, nginx, GitHub Actions, Dependabot
+
+## Running locally
+
 ### Prerequisites
 - [JDK 21](https://adoptium.net/temurin/releases/)
 - [Docker](https://docs.docker.com/get-docker/) (PostgreSQL runs in a container; the tests use Testcontainers)
-- An Auth0 application's client ID and secret
+- An Auth0 tenant configured for the app: a Regular Web Application with
+  `http://localhost:4200/login/oauth2/code/okta` as a callback URL, the
+  `ROLE_TENANT` and `ROLE_LANDLORD` roles, and a post-login Action that assigns the
+  default role. This setup is being replaced by standard OIDC with roles stored in the
+  app's own database and a bundled Keycloak, after which no external account will be
+  needed.
 
 ### Clone the repository
 <!-- TODO: replace TODO-USERNAME and TODO-BACKEND-REPO with the real backend repo URL -->
@@ -49,76 +155,48 @@ Clone the frontend next to this repository (or set `FRONTEND_DIR` in `.env`), th
 
 ``docker compose --profile full up --build``
 
-and open http://localhost:4200. nginx in the frontend container serves the app and
-proxies `/api`, `/oauth2` and `/login` to the backend, so everything is same-origin.
+and open http://localhost:4200.
 
 #### Tests
 ``./mvnw verify`` runs the test suite against a real PostgreSQL started by
 [Testcontainers](https://testcontainers.com/), so Docker must be running. No Auth0
 credentials or network access to Auth0 are needed.
 
-### Production
-Set `SPRING_PROFILES_ACTIVE=prod` along with the `POSTGRES_*` variables, the Auth0
-credentials and optionally `AUTH0_REDIRECT_URL` (default `/`).
+## Deploying
 
----
+The app is built to run behind a single origin, as it does in Docker Compose:
 
-## Production Scaling Roadmap & Known Architectural Trade-offs
+- A reverse proxy (nginx, or a platform's router) serves the Angular build and forwards
+  `/api`, `/oauth2` and `/login` to the backend, over HTTPS.
+- The backend runs with `SPRING_PROFILES_ACTIVE=prod` and gets its database from
+  `POSTGRES_URL`, `POSTGRES_DB`, `POSTGRES_USER` and `POSTGRES_PASSWORD`, plus the Auth0
+  credentials. Liquibase migrates the schema on startup.
+- PostgreSQL must allow the `btree_gist` extension (most managed services do).
+- The Auth0 application needs the production callback and logout URLs.
+- To run more than one backend instance, sessions would need to be shared (for example
+  with Spring Session on the same PostgreSQL); a single instance keeps them in memory.
 
-This application was intentionally built as an decoupled, self-contained single-repository prototype to optimize for portfolio evaluation without introducing high cloud infrastructure costs or specialized cluster dependencies. However, a production-grade Homestay Brokerage engine operating at scale must survive high concurrency, maintain tight security boundaries, and remain cost-effective. 
+## Known limitations
 
-Below is an explicit engineering analysis of the current architectural shortcuts and the corresponding technical blueprint designed to graduate Hearthway to production readiness.
+These are deliberate trade-offs for a portfolio project, roughly in the order I'd
+address them:
 
-### 1. Concurrency, Distributed Transactions & Booking Race Conditions
-* **The Shortcut:** The current booking confirmation engine inside `BookingService.java` relies on a synchronous "Check-Then-Act" pipeline (`bookingExistsAtInterval` validation followed by a standard `bookingRepository.save`). 
-* **The Scale Risk:** Under high concurrency (e.g., thousands of parallel transactions matching on seasonal inventory), this design introduces a classic race condition. Two separate application threads can discover a false negative availability flag simultaneously before committing, causing severe data corruption in the form of **double bookings**.
-* **Production Remedy:**
-    * **Optimistic Locking:** Introduce an `@Version` concurrency control column to tracking rows within our PostgreSQL schema for low-contention paths.
-    * **Distributed Sharded Locks:** Implement an distributed locking abstraction utilizing **Redis (via Redisson)** or **ShedLock** keyed explicitly to the `listingPublicId` cluster block. This serializes booking confirmation steps safely across horizontally scaled, stateless backend micro-containers without creating a database I/O bottleneck.
+- **Identity:** roles are assigned through the Auth0 Management API and read from a
+  custom token claim, and local users are matched by email. Next step: key users on the
+  OIDC subject, keep roles in the app's database, and make the identity provider a
+  configuration choice (Auth0 or Keycloak).
+- **Picture storage:** images are stored in PostgreSQL, and loading a listing also loads
+  its picture bytes. Moving them to object storage (or at least out of the listing
+  entity) would cut database load and server response times.
+- **Booking lifecycle:** cancelling deletes the booking. A real platform needs states
+  (requested, confirmed, cancelled, completed), cancellation policies and payments.
+  Deleting a listing also deletes its bookings.
+- **Abuse protection:** no rate limiting yet, and uploads are only checked for count,
+  not file type or size beyond the 100 MB request limit.
+- **Search:** location is country-level only; there is no map-area or amenity search.
+- **Frontend:** Angular 17 and PrimeNG 17 are past end of support; upgrading means
+  moving to PrimeNG's new theming system.
 
-### 2. Media Management, Memory Footprint & Database Abuse
-* **The Shortcut:** Property images are parsed directly as raw `byte[]` arrays inside the application layer and persisted to PostgreSQL utilizing binary Large Object blocks (`${blobType}` in the Liquibase schema).
-* **The Scale Risk:** Storing multiple high-resolution graphics files directly inside transactional relational tables causes rapid database bloating, severely degrades database backup and restore speeds, and floods application server heap memory profiles during entity mapping cycles.
-* **Production Remedy:**
-    * Migrate to an **asynchronous decoupled object storage architecture** utilizing cloud bucket topology (e.g., AWS S3, Google Cloud Storage, or MinIO).
-    * Refactor the backend controller to generate short-lived, cryptographically secure **Presigned Upload URLs**. The Angular client will then stream binary files directly to cloud object storage from the browser, keeping the Spring Boot instance stateless and tracking only lightweight deterministic string storage references in the relational database.
-
-### 3. Identity Provider Couplings & Boundary Violations
-* **The Shortcut:** When a user transitions state to host a property, `Auth0Service.java` executes a blocking outbound HTTP transaction directly to the Auth0 Management API to map the administrative `ROLE_LANDLORD` value to the remote user profile.
-* **The Scale Risk:** This architectural tight coupling introduces an external third-party infrastructure dependency directly inside our primary core domain transaction boundary. A network blip, API outage, or rate-limiting trip on Auth0's endpoint will cause local property creation events to hard-fail immediately.
-* **Production Remedy:**
-    * Isolate the external Identity Provider (IdP) boundary. Treat Auth0 strictly as an authorization and identity validation gateway.
-    * Maintain role-based authorization scopes natively inside the application's local database tables (`user_authority`). Elevate local customer status instantly on property creation, and defer down-stream external token updates asynchronously utilizing an isolated queue worker or webhook-driven transactional outbox pattern.
-
-### 4. Input Sanitization, CSRF & Cross-Site Scripting (XSS) Gaps
-* **The Shortcut:** Cookie-based Cross-Site Request Forgery (CSRF) tracking is enabled on our Spring Security filter chain utilizing the standard configuration `.withHttpOnlyFalse()`. Additionally, rich textual user data (e.g., property descriptions) is saved without mutation.
-* **The Scale Risk:** Setting HTTP-Only flags to false allows SPA client scripts to read validation tokens directly. If a landlord successfully injects a malicious script string into an un-sanitized markdown description field, viewing tenants are exposed to critical XSS token hijacking vectors.
-* **Production Remedy:**
-    * Implement explicit server-side validation and rich HTML sanitization utilizing an aspect parser like **jsoup** inside our entity interceptor tier.
-    * Enforce strict runtime **Content Security Policies (CSP)** headers across our API edge proxies to block cross-site execution paths completely.
-
-### 5. High-Throughput Sequence Bottlenecks
-* **The Shortcut:** Database sequences generated via Liquibase scripts currently default to an `incrementBy="1"` allocation tracking structure.
-* **The Scale Risk:** For every row written during high-frequency intervals, stateless application server containers are forced to execute a blocking round-trip network ping to PostgreSQL to pull a unique identifier value.
-* **Production Remedy:** Change the sequence tracking bounds to a bulk memory allocation layout (`incrementBy="50"`) mapped tightly to Hibernate’s **pooled-lo optimizer** settings, saving vast amounts of network overhead on sequential inserts.
-
-### 6. Frontend Resiliency & State Immutability
-* **The Shortcut:** The Angular service tier subscribes directly to network observables without fallback middleware or data protection patterns, while list modifications (such as cancels) apply raw JavaScript mutations like `splice` on local component reference memory.
-* **The Scale Risk:** Spotty mobile carrier client connectivity or an ephemeral packet drop immediately translates into a crashing application state for the user. Direct list pointer mutation can also trigger subtle template change-detection rendering failures.
-* **Production Remedy:**
-    * Refactor client operations into immutable functional pipelines (utilizing `filter`, `map`, and the object spread operator) to provide transparent and predictable Signal reactivity.
-    * Wrap external endpoints inside highly resilient RxJS pipe operations utilizing robust operators like `retry({ count: 3, delay: 1000 })` and uniform `catchError` handlers.
-
-### Architectural Risk & Priority Matrix
-
-The following ledger ranks the identified architectural shortcuts by their severity, impact on system stability, and production remediation priority:
-
-| Priority | Architectural Gap | Risk Classification | Business Impact | Primary Remediation Strategy |
-| :---: | :--- | :--- | :--- | :--- |
-| **P0** | Booking Race Conditions (`BookingService.java`) | **Data Integrity / High Concurrency Failure** | Overlapping double-bookings; severe customer trust loss and financial friction. | Distributed Lock (Redis/Redisson) on `listingPublicId` or Database Pessimistic Locking. |
-| **P0** | Manually Parsed Jackson validation (`LandlordResource.java`) | **Security / Vulnerability** | Information disclosure via stack trace leaks; potential validation bypass. | Standardize with native Spring `@Valid` payloads and a global `@ControllerAdvice` handler. |
-| **P1** | Media Asset Storage as Database BLOBs (`listing_picture`) | **Performance Degradation / High Cost** | Rapid database bloat, expensive read/write I/O, heavy memory profiles, un-cachable assets. | Asynchronous cloud storage integration via AWS S3/MinIO with **Presigned Upload URLs**. |
-| **P1** | Blocking IdP Role Synchronization (`Auth0Service.java`) | **System Availability / Coupling Fault** | Cascading downtime. If Auth0 drops or limits rates, core system actions (listing properties) fail. | Decouple sync boundary into an asynchronous queue or transaction outbox pattern. |
-| **P2** | In-Memory Array Collection Mutations (`splice`) | **UI Consistency / Rendering Flaws** | Broken Angular template change-detection cycles; erratic UI states on deletion. | Refactor frontend array filters to maintain **Strict Data Immutability**. |
-| **P2** | Monolithic Sequence Counter Allocations (`incrementBy="1"`) | **Database Performance Bottleneck** | Heavy network chatter to PostgreSQL under write-heavy loads. | Modify Liquibase sequence tracking blocks to `incrementBy="50"` with **pooled-lo** optimization. |
-| **P2** | Missing Network Layer Fault Tolerance | **Resiliency Failure** | Flaky mobile data connections trigger immediate application hard-failures for tenants. | Wrap Angular HTTP Observable flows inside structured **RxJS `retry` and `catchError` pipes**. |
+Deliberately out of scope: payments, reviews, messaging between hosts and guests,
+notifications, calendar sync with other platforms, pricing rules (weekend or seasonal
+rates, fees, taxes) and an admin back office.
