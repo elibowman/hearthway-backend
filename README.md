@@ -84,13 +84,9 @@ hit it. CI runs them on every push.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    Browser["Browser<br/>Angular app"] -->|"pages, /api, /oauth2, /login"| Nginx["nginx<br/>(frontend container)"]
-    Nginx -->|"proxied requests"| Backend["Spring Boot<br/>REST API + OAuth2 login"]
-    Backend -->|"JPA, Liquibase"| DB[("PostgreSQL")]
-    Backend <-->|"OIDC login"| Auth0["Auth0"]
-```
+![Architecture: the browser loads the Angular app from nginx, which proxies API and login requests to Spring Boot; Spring Boot uses PostgreSQL and Auth0 for OpenID Connect login](docs/architecture.drawio.svg)
+
+<sub>`docs/architecture.drawio.svg` is an editable draw.io diagram: open it in draw.io (or the VS Code draw.io extension) to change it.</sub>
 
 nginx serves the Angular app and proxies API and login requests to the backend, so the
 browser sees one origin and the session cookie just works.
