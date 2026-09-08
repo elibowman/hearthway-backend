@@ -86,7 +86,7 @@ hit it. CI runs them on every push.
 
 ![Architecture: the browser loads the Angular app from nginx, which proxies API and login requests to Spring Boot; Spring Boot uses PostgreSQL and Auth0 for OpenID Connect login](docs/architecture.drawio.svg)
 
-<sub>`docs/architecture.drawio.svg` is an editable draw.io diagram: open it in draw.io (or the VS Code draw.io extension) to change it.</sub>
+<sub>`docs/architecture.drawio.svg` is an editable draw.io diagram that follows the viewer's light or dark system theme. Saving it from draw.io regenerates the image without the dark-mode styles, so re-add them after editing.</sub>
 
 nginx serves the Angular app and proxies API and login requests to the backend, so the
 browser sees one origin and the session cookie just works.
