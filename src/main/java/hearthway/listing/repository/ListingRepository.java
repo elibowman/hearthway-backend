@@ -52,6 +52,9 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
      * booking overlapping [startDate, endDate). Bookings are half-open intervals, so
      * a stay ending on startDate does not conflict. The availability check runs in
      * SQL so that page contents and totals are correct.
+     * <p>
+     * Closest fit first: the fewest guests (then the lowest price) comes first, so a
+     * couple sees cosy places before large houses, without the larger ones being hidden.
      */
     @Query("SELECT listing FROM Listing listing" +
             " WHERE listing.location = :location" +
@@ -62,7 +65,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
             " AND NOT EXISTS (SELECT booking.id FROM Booking booking" +
             " WHERE booking.fkListing = listing.publicId" +
             " AND booking.startDate < :endDate AND booking.endDate > :startDate)" +
-            " ORDER BY listing.id ASC")
+            " ORDER BY listing.guests ASC, listing.price ASC, listing.id ASC")
     Page<Listing> searchAvailable(Pageable pageable, String location,
                                   int bathrooms, int bedrooms, int guests, int beds,
                                   LocalDate startDate, LocalDate endDate);

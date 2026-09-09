@@ -52,6 +52,20 @@ class SearchIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void listsTheClosestFitFirst() throws Exception {
+        User landlord = createUser("landlord@test.dev");
+        Listing largeHouse = withPrice(createListing(landlord, 10), 100);
+        Listing pricierCottage = withPrice(createListing(landlord, 2), 300);
+        Listing cheaperCottage = withPrice(createListing(landlord, 2), 100);
+
+        search(2)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].publicId").value(cheaperCottage.getPublicId().toString()))
+                .andExpect(jsonPath("$.content[1].publicId").value(pricierCottage.getPublicId().toString()))
+                .andExpect(jsonPath("$.content[2].publicId").value(largeHouse.getPublicId().toString()));
+    }
+
+    @Test
     void returnsPictureIdsInsteadOfImageBytes() throws Exception {
         createListing(createUser("landlord@test.dev"), 2);
 
@@ -66,6 +80,11 @@ class SearchIntegrationTest extends AbstractIntegrationTest {
         search(1, 1000)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.size").value(50));
+    }
+
+    private Listing withPrice(Listing listing, int price) {
+        listing.setPrice(price);
+        return listingRepository.saveAndFlush(listing);
     }
 
     private ResultActions search(int guests) throws Exception {
