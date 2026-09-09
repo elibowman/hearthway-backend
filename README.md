@@ -29,7 +29,9 @@ one at a time and the availability check sees the previous booking. A PostgreSQL
 exclusion constraint on the booked date ranges backs this up at the database level. A
 test fires 20 simultaneous bookings for the same nights and checks that exactly one
 succeeds and the rest get a clean `409 Conflict`. That test first exposed a deadlock
-when relying on the constraint alone, which is why the row lock was added.
+when relying on the constraint alone, which is why the row lock was added. To try it
+against the running app, `scripts/concurrent-bookings.sh` sends 20 simultaneous booking
+requests from a logged-in guest's session and tallies the responses.
 
 ```mermaid
 sequenceDiagram
