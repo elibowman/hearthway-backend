@@ -1,16 +1,11 @@
 # Hearthway
 
-<!-- TODO: replace TODO-USERNAME and TODO-BACKEND-REPO so the badge points at this repo -->
-[![CI](https://github.com/TODO-USERNAME/TODO-BACKEND-REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/TODO-USERNAME/TODO-BACKEND-REPO/actions/workflows/ci.yml)
+[![CI](https://github.com/elijahbowman/hearthway-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/elijahbowman/hearthway-backend/actions/workflows/ci.yml)
 
 A homestay booking platform: hosts list their homes, guests search for a place and book
 a stay. This repository is the **Spring Boot backend**; the
-<!-- TODO: replace TODO-USERNAME and TODO-FRONTEND-REPO with the real frontend repo URL -->
-[Angular frontend](https://github.com/TODO-USERNAME/TODO-FRONTEND-REPO) lives in its own
+[Angular frontend](https://github.com/elijahbowman/hearthway-frontend) lives in its own
 repository.
-
-<!-- TODO: add the demo video link and a screenshot (e.g. docs/home.png) -->
-**[Watch the 3-minute demo](TODO-VIDEO-LINK)**
 
 ## What it does
 
@@ -137,8 +132,7 @@ and type changes are new migrations.
   needed.
 
 ### Clone the repository
-<!-- TODO: replace TODO-USERNAME and TODO-BACKEND-REPO with the real backend repo URL -->
-``git clone https://github.com/TODO-USERNAME/TODO-BACKEND-REPO``
+``git clone https://github.com/elijahbowman/hearthway-backend``
 
 ### Configure
 ``cp .env.example .env`` and fill in `AUTH0_CLIENT_ID` and `AUTH0_CLIENT_SECRET`.
