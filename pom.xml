@@ -15,7 +15,7 @@
     <description>Hearthway API</description>
     <properties>
         <java.version>21</java.version>
-        <mapstruct.version>1.5.5.Final</mapstruct.version>
+        <mapstruct.version>1.6.3</mapstruct.version>
         <!-- Spring Boot 3.2 manages 1.19.x, which can't talk to Docker Engine 29+
              (Docker Desktop 4.56+). 1.21.4 supports the newer Docker API. -->
         <testcontainers.version>1.21.4</testcontainers.version>
